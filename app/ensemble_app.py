@@ -25,18 +25,14 @@ from model_net import ModelBase, ModelNet
 DEMO_DIR = 'test_images/normal'
 
 
-class EnsembleModel:
+class Clahe:
     def __init__(self):
-        self.model_path = 'models'
-        self.clahe_dir = 'clahe_dir'
-        self.model_dict = {'vgg': 'models/vgg.pth',
-                           'densenet': 'models/densenet.pth',
-                           'resnet': 'models/resnext.pth'
-                          }
+        self.image_list = None
+        self.image_path = None
 
     def get_image_list(self, path):
         """
-        get path of images and return list of image path
+        get path of images and return list of image paths
         """
         self.image_path = path
         self.image_list = []
@@ -58,6 +54,36 @@ class EnsembleModel:
             cl1 = clahe.apply(img)
             cv2.imwrite('clahe_dir/clahe_dir/' + image_name, cl1)
 
+    def rm_clahe(self):
+        """del clahe folder"""
+        os.remove('clahe_dir/clahe_dir')
+        os.renive('clahe_dir')
+
+
+
+
+class ModelResults:
+    """"""
+    def __init__(self):
+        self.model_path = 'models'
+        self.model_dict = {'vgg': 'models/vgg.pth',
+                           'densenet': 'models/densenet.pth',
+                           'resnet': 'models/resnext.pth'
+                          }
+
+    def prepare_dataset(self):
+        """Apply transformations for dataset and get filenames"""
+        dataset = ImageFolder('clahe_dir',
+                                       transform=transforms.Compose([
+                                           transforms.Resize(512),
+                                           transforms.CenterCrop(480),
+                                           transforms.ToTensor(),
+                                       ]))
+        test_dl = DataLoader(dataset, batch_size=20)
+        self.file_names = [x[0].split('/')[-1] for x in test_dl.dataset.samples]
+        self.test_dl = DeviceDataLoader(test_dl, self.get_default_device())
+
+
     def get_default_device(self):
         """Pick GPU if available, else CPU"""
         if torch.cuda.is_available():
@@ -77,16 +103,37 @@ class EnsembleModel:
         print(f'{model.network.__class__.__name__} loaded')
         return model
 
-    @torch.no_grad()
-    def test_predict(self, model, test_loader):
+    def predict(self, model):
+        """Return prediction outputs """
         model.eval()
-        # perform testing for each batch
-        outputs = [model.validation_step(batch) for batch in test_loader]
-        results = model.test_prediction(outputs)
-        print('test_loss: {:.4f}, test_acc: {:.4f}'
-              .format(results['test_loss'], results['test_acc']))
+        outputs = [model.predict(batch) for batch in self.test_dl]
+        print(f'{model.network.__class__.__name__} outputs ready')
+        return outputs
 
-        return results['test_preds'], results['test_labels'], results['out']
+    def output_to_table(self, model, results):
+        """takes results and model, creates DataFrame"""
+        name = model.network.__class__.__name__
+        prediction_list = []
+        for row in results:
+            for num in row.tolist():
+                prediction_list.append(num)
+
+        df = pd.DataFrame(prediction_list, columns=[f'{name}_label_0', f'{name}_label_1', f'{name}_label_2'])
+        return df
+
+    def get_ensemble_table(self):
+        df_list = []
+        for m in self.model_dict:
+            model = self.load_model(m)
+            out = self.predict(model)
+            df = self.output_to_table(model, out)
+            df_list.append(df)
+
+        df_concat = pd.concat(df_list, axis=1)
+        df_concat['filename'] = self.file_names
+        return df_concat
+
+
 
 
 class DeviceDataLoader():
@@ -108,31 +155,20 @@ class DeviceDataLoader():
         """Number of batches"""
         return len(self.dl)
 
+
 def to_device(data, device):
     """Move tensor(s) to chosen device"""
     if isinstance(data, (list,tuple)):
         return [to_device(x, device) for x in data]
     return data.to(device, non_blocking=True)
 
-def create_test_dataset(data_dir):
-    test_dataset = ImageFolder(data_dir,
-                               transform=transforms.Compose([
-                                   transforms.Resize(512),
-                                   transforms.CenterCrop(480),
-                                   transforms.ToTensor(),
-                               ]))
-    return test_dataset
-
 
 if __name__ =="__main__":
-    master = EnsembleModel()
-    #master.get_image_list(DEMO_DIR)
-    #master.convert_clahe()
-    test_dataset = create_test_dataset('clahe_dir')
-    test_dl = DataLoader(test_dataset, batch_size=(20))
-    test_dl = DeviceDataLoader(test_dl, master.get_default_device())
-    model = master.load_model('densenet')
-    model(test_dl)
+    clahe = Clahe()
+    clahe.get_image_list(DEMO_DIR)
+    clahe.convert_clahe()
+    # master.prepare_dataset()
+    #print(master.get_ensemble_table())
 
 
 

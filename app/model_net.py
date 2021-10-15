@@ -24,6 +24,11 @@ class ModelBase(nn.Module):
 
         return {'train_loss': epoch_loss.item(), 'train_acc': epoch_acc.item()}
 
+    def predict(self, batch):
+        images, labels = batch
+        out = self(images)  # generate predictions
+        return out
+
     # this is for loading the batch of val/test image and outputting its loss, accuracy,
     # predictions & labels
     def validation_step(self, batch):
@@ -82,7 +87,7 @@ class ModelNet(ModelBase):
         if self.network.__class__.__name__ == 'ResNet':
             for param in self.network.fc.parameters():
                 param.require_grad = False
-                # vgg16
+        # vgg16
         if self.network.__class__.__name__ == 'VGG':
             for param in self.network.classifier[6].parameters():
                 param.require_grad = False
