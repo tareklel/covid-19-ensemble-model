@@ -1,69 +1,57 @@
 import pandas as pd
-import numpy as np
 import os
 import shutil
-from tqdm import tqdm
-import PIL
-import ast
-import sklearn
-import sklearn.model_selection
-import copy
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torchvision
 import torchvision.transforms as transforms
 import cv2
-from torch.utils.data import DataLoader, random_split
-from torchvision.utils import make_grid
-import torchvision.models as models
+from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
-import albumentations as a
 from model_net import ModelBase, ModelNet
+from sklearn.linear_model import LogisticRegression
+import sys
+import pickle
 
 
-DEMO_DIR = 'test_images/normal'
+DEMO_DIR = 'test_images/pneumonia'
 
 
 class Clahe:
+    """converts and removes CLAHE converted images used in predictions"""
     def __init__(self):
         self.image_list = None
         self.image_path = None
+        self.image_list = []
 
     def get_image_list(self, path):
-        """
-        get path of images and return list of image paths
-        """
+        """get path of images and return list of image paths"""
         self.image_path = path
-        self.image_list = []
         for impth in os.listdir(self.image_path):
             path = self.image_path + '/' + impth
             if os.path.isfile(self.image_path + '/' + impth):
                 self.image_list.append(path)
 
     def convert_clahe(self):
-        """
-        create clahe folder,  process images with clahe to folder
-        """
+        """create clahe folder,  process images with clahe to folder"""
         os.mkdir('clahe_dir')
         os.mkdir('clahe_dir/clahe_dir')
         for file in self.image_list:
             image_name = file.split('/')[-1]
             img = cv2.imread(file, 0)
-            clahe = cv2.createCLAHE(tileGridSize=(8,8))
-            cl1 = clahe.apply(img)
+            create_clahe = cv2.createCLAHE(tileGridSize=(8,8))
+            cl1 = create_clahe.apply(img)
             cv2.imwrite('clahe_dir/clahe_dir/' + image_name, cl1)
 
-    def rm_clahe(self):
-        """del clahe folder"""
-        os.remove('clahe_dir/clahe_dir')
-        os.renive('clahe_dir')
+    def rm_clahe():
+        """delete clahe folder"""
+        shutil.rmtree('clahe_dir/clahe_dir')
+        os.rmdir('clahe_dir')
 
 
 
 
-class ModelResults:
-    """"""
+class EnsembleModel:
+    """ get images as input and output ensemble model prediction"""
     def __init__(self):
         self.model_path = 'models'
         self.model_dict = {'vgg': 'models/vgg.pth',
@@ -71,9 +59,9 @@ class ModelResults:
                            'resnet': 'models/resnext.pth'
                           }
 
-    def prepare_dataset(self):
+    def prepare_dataset(self, dir):
         """Apply transformations for dataset and get filenames"""
-        dataset = ImageFolder('clahe_dir',
+        dataset = ImageFolder(dir,
                                        transform=transforms.Compose([
                                            transforms.Resize(512),
                                            transforms.CenterCrop(480),
@@ -130,8 +118,36 @@ class ModelResults:
             df_list.append(df)
 
         df_concat = pd.concat(df_list, axis=1)
-        df_concat['filename'] = self.file_names
+        # arrange to match meta-model
+        df_concat = df_concat[['VGG_label_0',
+                                 'ResNet_label_0',
+                                 'DenseNet_label_0',
+                                 'VGG_label_1',
+                                 'ResNet_label_1',
+                                 'DenseNet_label_1',
+                                 'VGG_label_2',
+                                 'ResNet_label_2',
+                                 'DenseNet_label_2']]
         return df_concat
+
+    def ensemble_prediction(self, df_concat):
+        """receive concat dataset output metamodel prediction"""
+        with open('models/logistic_regression.pkl', 'rb') as f:
+            clf = pickle.load(f)
+
+        preds = clf.predict(df_concat)
+        pred_table = pd.DataFrame()
+        pred_table['file_name'] =self.file_names
+        name_dict = {0:'covid-19', 1:'normal', 2:'pneumonia'}
+        pred_table['diagnosis'] = preds
+        pred_table['diagnosis'] = pred_table['diagnosis'].map(name_dict)
+        return pred_table
+
+    def ensemble_model_predict(self):
+        df_concat = self.get_ensemble_table()
+        diagnosis = self.ensemble_prediction(df_concat)
+        return diagnosis
+
 
 
 
@@ -164,11 +180,33 @@ def to_device(data, device):
 
 
 if __name__ =="__main__":
+
+    if os.path.isdir('clahe_dir'):
+        Clahe.rm_clahe()
+
+
     clahe = Clahe()
-    clahe.get_image_list(DEMO_DIR)
+    try:
+        input = sys.argv[1]
+        if os.path.isdir(input):
+            clahe.get_image_list(input)
+        else:
+            print("invalid path provided")
+            sys.exit()
+    except IndexError:
+        print('no path provided initializing demo')
+        clahe.get_image_list(DEMO_DIR)
+
+
+
     clahe.convert_clahe()
-    # master.prepare_dataset()
-    #print(master.get_ensemble_table())
+
+    master = EnsembleModel()
+    master.prepare_dataset('clahe_dir')
+    diagnosis = master.ensemble_model_predict()
+    print(diagnosis)
+
+    Clahe.rm_clahe()
 
 
 
