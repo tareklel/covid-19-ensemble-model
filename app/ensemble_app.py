@@ -18,6 +18,7 @@ DEMO_DIR = 'test_images/pneumonia'
 
 class Clahe:
     """converts and removes CLAHE converted images used in predictions"""
+
     def __init__(self):
         self.image_list = None
         self.image_path = None
@@ -36,41 +37,41 @@ class Clahe:
         os.mkdir('clahe_dir')
         os.mkdir('clahe_dir/clahe_dir')
         for file in self.image_list:
+            # get file name
             image_name = file.split('/')[-1]
+            # read file
             img = cv2.imread(file, 0)
-            create_clahe = cv2.createCLAHE(tileGridSize=(8,8))
+            # apple CLAHE
+            create_clahe = cv2.createCLAHE(tileGridSize=(8, 8))
             cl1 = create_clahe.apply(img)
+            # save file
             cv2.imwrite('clahe_dir/clahe_dir/' + image_name, cl1)
-
-    def rm_clahe():
-        """delete clahe folder"""
-        shutil.rmtree('clahe_dir/clahe_dir')
-        os.rmdir('clahe_dir')
-
-
 
 
 class EnsembleModel:
     """ get images as input and output ensemble model prediction"""
+
     def __init__(self):
         self.model_path = 'models'
         self.model_dict = {'vgg': 'models/vgg.pth',
                            'densenet': 'models/densenet.pth',
                            'resnet': 'models/resnext.pth'
-                          }
+                           }
 
     def prepare_dataset(self, dir):
         """Apply transformations for dataset and get filenames"""
         dataset = ImageFolder(dir,
-                                       transform=transforms.Compose([
-                                           transforms.Resize(512),
-                                           transforms.CenterCrop(480),
-                                           transforms.ToTensor(),
-                                       ]))
+                              transform=transforms.Compose([
+                                  transforms.Resize(512),
+                                  transforms.CenterCrop(480),
+                                  transforms.ToTensor(),
+                              ]))
         test_dl = DataLoader(dataset, batch_size=20)
-        self.file_names = [x[0].split('/')[-1] for x in test_dl.dataset.samples]
+        # get file names to be used in final df
+        self.file_names = [x[0].split('/')[-1]
+                           for x in test_dl.dataset.samples]
+        # move data to device
         self.test_dl = DeviceDataLoader(test_dl, self.get_default_device())
-
 
     def get_default_device(self):
         """Pick GPU if available, else CPU"""
@@ -106,10 +107,13 @@ class EnsembleModel:
             for num in row.tolist():
                 prediction_list.append(num)
 
-        df = pd.DataFrame(prediction_list, columns=[f'{name}_label_0', f'{name}_label_1', f'{name}_label_2'])
+        df = pd.DataFrame(prediction_list, columns=[f'{name}_label_0',
+                                                    f'{name}_label_1',
+                                                    f'{name}_label_2'])
         return df
 
     def get_ensemble_table(self):
+        """combine outputs of the DL models for all classes into a table"""
         df_list = []
         for m in self.model_dict:
             model = self.load_model(m)
@@ -120,36 +124,37 @@ class EnsembleModel:
         df_concat = pd.concat(df_list, axis=1)
         # arrange to match meta-model
         df_concat = df_concat[['VGG_label_0',
-                                 'ResNet_label_0',
-                                 'DenseNet_label_0',
-                                 'VGG_label_1',
-                                 'ResNet_label_1',
-                                 'DenseNet_label_1',
-                                 'VGG_label_2',
-                                 'ResNet_label_2',
-                                 'DenseNet_label_2']]
+                               'ResNet_label_0',
+                               'DenseNet_label_0',
+                               'VGG_label_1',
+                               'ResNet_label_1',
+                               'DenseNet_label_1',
+                               'VGG_label_2',
+                               'ResNet_label_2',
+                               'DenseNet_label_2']]
         return df_concat
 
     def ensemble_prediction(self, df_concat):
         """receive concat dataset output metamodel prediction"""
         with open('models/logistic_regression.pkl', 'rb') as f:
+            # load meta-model
             clf = pickle.load(f)
-
+        # output predictions
         preds = clf.predict(df_concat)
+        # save predictions to file
         pred_table = pd.DataFrame()
-        pred_table['file_name'] =self.file_names
-        name_dict = {0:'covid-19', 1:'normal', 2:'pneumonia'}
+        pred_table['file_name'] = self.file_names
         pred_table['diagnosis'] = preds
+        # rename labels to diagnosis names
+        name_dict = {0: 'covid-19', 1: 'normal', 2: 'pneumonia'}
         pred_table['diagnosis'] = pred_table['diagnosis'].map(name_dict)
         return pred_table
 
     def ensemble_model_predict(self):
+        """get results from three models, pass to meta learner"""
         df_concat = self.get_ensemble_table()
         diagnosis = self.ensemble_prediction(df_concat)
         return diagnosis
-
-
-
 
 
 class DeviceDataLoader():
@@ -174,16 +179,21 @@ class DeviceDataLoader():
 
 def to_device(data, device):
     """Move tensor(s) to chosen device"""
-    if isinstance(data, (list,tuple)):
+    if isinstance(data, (list, tuple)):
         return [to_device(x, device) for x in data]
     return data.to(device, non_blocking=True)
 
 
-if __name__ =="__main__":
+def rm_clahe():
+    """delete clahe folder"""
+    shutil.rmtree('clahe_dir/clahe_dir')
+    os.rmdir('clahe_dir')
+
+
+if __name__ == "__main__":
 
     if os.path.isdir('clahe_dir'):
-        Clahe.rm_clahe()
-
+        rm_clahe()
 
     clahe = Clahe()
     try:
@@ -197,8 +207,6 @@ if __name__ =="__main__":
         print('no path provided initializing demo')
         clahe.get_image_list(DEMO_DIR)
 
-
-
     clahe.convert_clahe()
 
     master = EnsembleModel()
@@ -206,18 +214,4 @@ if __name__ =="__main__":
     diagnosis = master.ensemble_model_predict()
     print(diagnosis)
 
-    Clahe.rm_clahe()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    rm_clahe()

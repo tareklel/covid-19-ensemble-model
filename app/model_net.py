@@ -10,16 +10,19 @@ class ModelBase(nn.Module):
     def training_step(self, batch, weight):
         images, labels = batch
         out = self(images)  # generate predictions
-        loss = F.cross_entropy(out, labels, weight=weight)  # weighted compute loss
+        # weighted compute loss
+        loss = F.cross_entropy(out, labels, weight=weight)
         acc, preds = accuracy(out, labels)  # calculate accuracy
 
         return {'train_loss': loss, 'train_acc': acc}
 
     # this is for computing the train average loss and acc for each epoch
     def train_epoch_end(self, outputs):
-        batch_losses = [x['train_loss'] for x in outputs]  # get all the batches loss
+        batch_losses = [x['train_loss']
+                        for x in outputs]  # get all the batches loss
         epoch_loss = torch.stack(batch_losses).mean()  # combine losses
-        batch_accs = [x['train_acc'] for x in outputs]  # get all the batches acc
+        batch_accs = [x['train_acc']
+                      for x in outputs]  # get all the batches acc
         epoch_acc = torch.stack(batch_accs).mean()  # combine accuracies
 
         return {'train_loss': epoch_loss.item(), 'train_acc': epoch_acc.item()}
@@ -45,7 +48,8 @@ class ModelBase(nn.Module):
 
     # this is for computing the validation average loss and acc for each epoch
     def validation_epoch_end(self, outputs):
-        batch_losses = [x['val_loss'] for x in outputs]  # get all the batches loss
+        batch_losses = [x['val_loss']
+                        for x in outputs]  # get all the batches loss
         epoch_loss = torch.stack(batch_losses).mean()  # combine losses
         batch_accs = [x['val_acc'] for x in outputs]  # get all the batches acc
         epoch_acc = torch.stack(batch_accs).mean()  # combine accuracies

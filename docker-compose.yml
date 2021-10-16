@@ -1,6 +1,0 @@
-services:
-  app:              #name of service
-      build:        #build file
-        context: .  # directory to build from
-      volumes:
-        - ./app:/app
