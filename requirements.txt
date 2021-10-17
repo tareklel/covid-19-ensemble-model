@@ -1,11 +1,8 @@
 numpy
 pandas
-tqdm
 opencv-python
-pillow
 sklearn
 torch
 torchvision
 sklearn
-albumentations
 
